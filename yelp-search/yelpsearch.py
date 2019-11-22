@@ -44,30 +44,33 @@ def get_substring(instr, startstr, endstr=None):
         return instr[start_idx:]
     
     
-def get_driver():
+def get_driver(debug):
     # option setting headless
     
     options = webdriver.ChromeOptions()
     options.add_experimental_option("excludeSwitches",["ignore-certificate-errors"])
     options.add_argument('--disable-gpu')
     options.add_argument('--headless')
-
-    # driver = webdriver.Chrome("chromedriver.exe", chrome_options=options)
-    driver = webdriver.Chrome(chrome_options=options)
+    if debug:
+        driver = webdriver.Chrome()
+    else:
+        # driver = webdriver.Chrome("chromedriver.exe", chrome_options=options)
+        driver = webdriver.Chrome(chrome_options=options)
 
     return driver
     
 
 def parse_argument():
     """
-    Command : python script.py -s categories.txt -l city.txt -o output.txt -p 10 -ta 5-10 -tb 2-5 -b 900 -v
+    Command(product) : python script.py -s categories.txt -l city.txt -o output.txt -p 10 -ta 5-10 -tb 2-5 -b 900 -v
+    Command(debug) : python script.py -s categories.txt -l city.txt -o output.txt -p 10 -ta 5-10 -tb 2-5 -b 900 -v -d
     """
     
     description = """
 Scrape Yelp for the redirect URL of up to a specified number of pages for a search footprint which is provided as an input file.
 
 Syntax:
-    python script.py -s <categories_file> -l <city_file> -o <output_file> -p <page_count> -ta <throttling_value_range_1> -tb <throttling_value_range_2> -b <waiting_time_when_banned> -v
+    python script.py -s <categories_file> -l <city_file> -o <output_file> -p <page_count> -ta <throttling_value_range_1> -tb <throttling_value_range_2> -b <waiting_time_when_banned> -v -d
     
 Samples:
     python script.py -s categories.txt -l city.txt -o output.txt -p 10 -ta 5-10 -tb 2-5 -b 900 -v
@@ -83,6 +86,7 @@ Samples:
     parser.add_argument('-tb', '--throttleb', type=str, help='throttle time range in seconds. default: 2-5', default="2-5")
     parser.add_argument('-b', '--banned', type=int, help='waiting time in seconds when banned. default: 900', default=900)
     parser.add_argument('-v', '--verbose', action='store_true', help='verbose mode')
+    parser.add_argument('-d', '--debug', action='store_true', help='debug mode')
     
     try:
         args = parser.parse_args()
@@ -122,11 +126,15 @@ Samples:
     verbose = False
     if args.verbose:
         verbose = True
-        
-    if verbose:
-        print ("Parameter :", search, loc, output, ta, tb, banned, verbose)
 
-    return  search, loc, output, pages, ta, tb, banned, verbose
+    debug = False
+    if args.debug:
+        debug = True
+
+    if verbose:
+        print ("Parameter :", search, loc, output, ta, tb, banned, verbose, debug)
+
+    return  search, loc, output, pages, ta, tb, banned, verbose, debug
 
 
 def ready_categories_cities(search, loc):
@@ -295,7 +303,7 @@ if __name__ == "__main__":
     
     try:
         # Parse arguments
-        search, loc, output, pages, ta, tb, banned, verbose = parse_argument()
+        search, loc, output, pages, ta, tb, banned, verbose, debug = parse_argument()
         
         # Read categories and cities from the input files.
         categories, cities = ready_categories_cities(search, loc)
@@ -303,7 +311,7 @@ if __name__ == "__main__":
             print ("Category count  =", len(categories))
             print ("City count      =", len(cities))
 
-        driver = get_driver()
+        driver = get_driver(debug)
         with open(output, "w", encoding='utf-8') as output_file:
             if verbose:
                 print ("Main Processing...")

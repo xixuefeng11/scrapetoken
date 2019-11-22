@@ -170,7 +170,7 @@ def get_business_website_url(driver, params):
                 website_url = unquote(website_url)
                 print("Business website :", website_url)
                 emails = EmailScraper(website_url).extract_mail_add()
-                print("Emails :", emails)
+                print('Found these email address(es) :', emails)
 
         # write csv
         if len(emails) > 0:
@@ -188,7 +188,8 @@ def get_business_website_url(driver, params):
         wait_for(throttle - 0.5, throttle + 0.5)
 
 
-def get_driver():
+def get_driver(debug):
+
     driver = getattr(threadLocal, 'driver', None)
 
     options = webdriver.ChromeOptions()
@@ -198,14 +199,19 @@ def get_driver():
 
     if driver is None:
         # driver = webdriver.Chrome("chromedriver.exe", chrome_options=options)
-        # driver = webdriver.Chrome()
-        driver = webdriver.Chrome(chrome_options=options)
-        # driver.set_window_size(0, 0)
+        if debug:
+            driver = webdriver.Chrome()
+            driver.set_window_size(0, 0)
+        else:
+            driver = webdriver.Chrome(chrome_options=options)
         setattr(threadLocal, 'driver', driver)
         return driver
 
 def thread_proc(params):
-    driver = get_driver()
+
+    debug = params['debug']
+
+    driver = get_driver(debug)
     get_business_website_url(driver, params)
     driver.quit()
 
@@ -218,13 +224,15 @@ def divide_chunks(urls, n):
         yield urls[i:i + chunk_size]
 
 class EmailScraper(object):
+    # Email scraper
 
     def __init__(self, domain_name=None):
         self.visited = {'/'}
-        self.extracted_mail = set()
+        self.extracted_mail = []
         self.domain_name = domain_name
         self.dn_as_list = domain_name.split('.')[1:]
         self.cnt = 0
+
     def extract_mail_add(self):
         node_list = ['{}'.format(self.domain_name)]
         result = []
@@ -241,16 +249,15 @@ class EmailScraper(object):
                     if len(node_list) < 50:
                         node_list.extend(fetch_links(r['html_lxml'], self.domain_name, self.dn_as_list, self.visited))
                     for address in find_mail_address(r['html']):
-                        self.extracted_mail.add(address)
+                        if address.lower() not in self.extracted_mail:
+                            self.extracted_mail.append(address.lower())
                 self.cnt = self.cnt + 1
             if self.cnt == 30:
                 break
         if self.extracted_mail:
-            print('Found these email address(es) :')
             for address in self.extracted_mail:
                 if check_spamtxt(address):
-                    if is_valid(address):
-                        result.append(address)
+                    result.append(address)
         else:
             print('Could not find an email-address on {}!'.format(self.domain_name))
 
@@ -258,17 +265,20 @@ class EmailScraper(object):
         
 def check_spamtxt(address):
     # check spam text
-    with open("spamtraps.txt", "r", encoding='utf-8') as search_f:
-        spamtraps = [line.strip() for line in search_f.readlines()]
+    global spamtraps
 
-        for spamtrap in spamtraps:
-            if spamtrap.lower() in address.lower():
-                return False
+    for spamtrap in spamtraps:
+        if spamtrap.lower() in address.lower():
+            return False
+
+    if is_valid(address):
         return True
 
 def is_valid(email):
-    regex = '^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$'
 
+    # check email validation
+
+    regex = '^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$'
     if(re.search(regex,email)):
         return True
     else:
@@ -276,6 +286,7 @@ def is_valid(email):
 
 
 def get_html(link=None):
+    # get page source
 
     if link:
         result = {}
@@ -291,6 +302,7 @@ def get_html(link=None):
 
 
 def in_same_domain(source=None, target=None):
+    # check domain status
 
     if all([type(source) == list, type(target) == str]):
         return source == urlparse(target).netloc.split('.')[-len(source):]
@@ -298,6 +310,8 @@ def in_same_domain(source=None, target=None):
 
 
 def find_mail_address(html_corpus=None):
+    # find email address
+
     emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]{2,3}", html_corpus)
     result = []
     for email in emails:
@@ -308,6 +322,8 @@ def find_mail_address(html_corpus=None):
 
 
 def fetch_links(html_corpus=None, domain_name=None, dn_as_list=None, visited_links=None):
+    # get links at page
+    
     links = []
     if all([html_corpus, domain_name, type(visited_links) == set, type(dn_as_list) == list]):
         for link in html_corpus.find_all('a'):
@@ -328,11 +344,12 @@ def fetch_links(html_corpus=None, domain_name=None, dn_as_list=None, visited_lin
 if __name__ == "__main__":
 
     """
-    Command : python yelp_proc.py -i input.txt -o output.csv -t 3 -s 1 -v
+    Command(product) : python yelp_proc.py -i input.txt -o output.csv -t 3 -s 1 -v
+    Command(debug) : python yelp_proc.py -i input.txt -o output.csv -t 3 -s 1 -v -d
     """
 
     parser = argparse.ArgumentParser(description='Extracts business website urls which have rating value \
-        less than 3.5 from the input plain text file. Format: \n\tpython yelp_proc.py -i <input file name> -o <output file name> -t <thread count> -s <throttle seconds> -v')
+        less than 3.5 from the input plain text file. Format: \n\tpython yelp_proc.py -i <input file name> -o <output file name> -t <thread count> -s <throttle seconds> -v -d')
     parser.add_argument('-i', '--input', type=str,
                         help='input file name(in plain text format)')
     parser.add_argument('-o', '--output', type=str,
@@ -343,7 +360,8 @@ if __name__ == "__main__":
                         help='throttle time between requests in seconds')
     parser.add_argument('-v', '--verbose',
                         action='store_true', help='verbose mode')
-
+    parser.add_argument('-d', '--debug',
+                         action='store_true', help='debug mode')
     args = parser.parse_args()
 
     if (args.input is None or args.output is None):
@@ -369,8 +387,16 @@ if __name__ == "__main__":
     if args.verbose:
         verbose = True
 
+    debug = False
+    if args.debug:
+        debug = True
+
     if verbose:
-        print("Parameter", args.input, args.output, threads, throttle, verbose)
+        print("Parameter", args.input, args.output, threads, throttle, verbose, debug)
+
+    global spamtraps
+    with open("spamtraps.txt", "r", encoding='utf-8') as search_f:
+        spamtraps = [line.strip() for line in search_f.readlines()]
 
     # signal handlers
     signal.signal(signal.SIGTERM, signal_handler)
@@ -398,7 +424,8 @@ if __name__ == "__main__":
                     "urls": url_chunks[i],
                     "throttle": throttle,
                     "output": fOutput,
-                    "verbose": verbose
+                    "verbose": verbose,
+                    "debug": debug
                 }
                 params.append(param)
 
